@@ -339,7 +339,7 @@ F(ngx_http_lua_socket_tcp_finalize_write_part) {
 === TEST 5: concurrent socket operations while connecting
 --- stream_server_config
     lua_socket_log_errors off;
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
 
@@ -371,7 +371,7 @@ F(ngx_http_lua_socket_tcp_finalize_write_part) {
         end
 
         sock:settimeout(300)
-        local ok, err = sock:connect("106.187.41.147", 12345)
+        local ok, err = sock:connect("127.0.0.2", 12345)
         ngx.say("connect: ", ok, " ", err)
 
         local ok, err = sock:close()
@@ -399,8 +399,8 @@ close: nil closed
 === TEST 6: concurrent operations while resolving
 --- stream_server_config
     lua_socket_log_errors off;
-    lua_resolver agentzh.org:12345;
-    lua_resolver_timeout 300ms;
+    resolver 127.0.0.2:12345;
+    resolver_timeout 300ms;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
 
@@ -432,7 +432,7 @@ close: nil closed
         end
 
         sock:settimeout(300)
-        local ok, err = sock:connect("some2.agentzh.org", 12345)
+        local ok, err = sock:connect("some2.agentzh.org", 80)
         ngx.say("connect: ", ok, " ", err)
 
         local ok, err = sock:close()
@@ -598,4 +598,3 @@ close: 1 nil
 
 --- no_error_log
 [error]
-

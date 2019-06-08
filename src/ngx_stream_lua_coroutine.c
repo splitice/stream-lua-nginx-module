@@ -1,5 +1,13 @@
 
 /*
+ * !!! DO NOT EDIT DIRECTLY !!!
+ * This file was automatically generated from the following template:
+ *
+ * src/subsys/ngx_subsys_lua_coroutine.c.tt2
+ */
+
+
+/*
  * Copyright (C) Xiaozhe Wang (chaoslawful)
  * Copyright (C) Yichun Zhang (agentzh)
  */
@@ -13,6 +21,7 @@
 
 #include "ngx_stream_lua_coroutine.h"
 #include "ngx_stream_lua_util.h"
+#include "ngx_stream_lua_probe.h"
 
 
 /*
@@ -44,52 +53,55 @@ static const ngx_str_t
 static int
 ngx_stream_lua_coroutine_create(lua_State *L)
 {
-    ngx_stream_session_t          *s;
-    ngx_stream_lua_ctx_t          *ctx;
+    ngx_stream_lua_request_t        *r;
+    ngx_stream_lua_ctx_t            *ctx;
 
-    s = ngx_stream_lua_get_session(L);
-    if (s == NULL) {
-        return luaL_error(L, "no session found");
+    r = ngx_stream_lua_get_req(L);
+    if (r == NULL) {
+        return luaL_error(L, "no request found");
     }
 
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_lua_module);
+    ctx = ngx_stream_lua_get_module_ctx(r, ngx_stream_lua_module);
     if (ctx == NULL) {
-        return luaL_error(L, "no session ctx found");
+        return luaL_error(L, "no request ctx found");
     }
 
-    return ngx_stream_lua_coroutine_create_helper(L, s, ctx, NULL);
+    return ngx_stream_lua_coroutine_create_helper(L, r, ctx, NULL);
 }
 
 
 int
-ngx_stream_lua_coroutine_create_helper(lua_State *L, ngx_stream_session_t *s,
-    ngx_stream_lua_ctx_t *ctx, ngx_stream_lua_co_ctx_t **pcoctx)
+ngx_stream_lua_coroutine_create_helper(lua_State *L,
+    ngx_stream_lua_request_t *r, ngx_stream_lua_ctx_t *ctx,
+    ngx_stream_lua_co_ctx_t **pcoctx)
 {
     lua_State                     *vm;  /* the Lua VM */
     lua_State                     *co;  /* new coroutine to be created */
-    ngx_stream_lua_co_ctx_t       *coctx; /* co ctx for the new coroutine */
+
+    /* co ctx for the new coroutine */
+    ngx_stream_lua_co_ctx_t               *coctx;
 
     luaL_argcheck(L, lua_isfunction(L, 1) && !lua_iscfunction(L, 1), 1,
                   "Lua function expected");
 
     ngx_stream_lua_check_context(L, ctx, NGX_STREAM_LUA_CONTEXT_CONTENT
-                                 | NGX_STREAM_LUA_CONTEXT_TIMER);
+                                 | NGX_STREAM_LUA_CONTEXT_TIMER
+                                 | NGX_STREAM_LUA_CONTEXT_SSL_CERT
+                                 | NGX_STREAM_LUA_CONTEXT_PREREAD
+                                 );
 
-    vm = ngx_stream_lua_get_lua_vm(s, ctx);
+    vm = ngx_stream_lua_get_lua_vm(r, ctx);
 
     /* create new coroutine on root Lua state, so it always yields
      * to main Lua thread
      */
     co = lua_newthread(vm);
 
-#if 0
-    /* TODO */
-    ngx_stream_lua_probe_user_coroutine_create(s, L, co);
-#endif
+    ngx_stream_lua_probe_user_coroutine_create(r, L, co);
 
     coctx = ngx_stream_lua_get_co_ctx(co, ctx);
     if (coctx == NULL) {
-        coctx = ngx_stream_lua_create_co_ctx(s, ctx);
+        coctx = ngx_stream_lua_create_co_ctx(r, ctx);
         if (coctx == NULL) {
             return luaL_error(L, "no memory");
         }
@@ -102,11 +114,15 @@ ngx_stream_lua_coroutine_create_helper(lua_State *L, ngx_stream_session_t *s,
     coctx->co = co;
     coctx->co_status = NGX_STREAM_LUA_CO_SUSPENDED;
 
+#ifdef OPENRESTY_LUAJIT
+    ngx_stream_lua_set_req(co, r);
+#else
     /* make new coroutine share globals of the parent coroutine.
      * NOTE: globals don't have to be separated! */
     ngx_stream_lua_get_globals_table(L);
     lua_xmove(L, co, 1);
     ngx_stream_lua_set_globals_table(co);
+#endif
 
     lua_xmove(vm, L, 1);    /* move coroutine from main thread to L */
 
@@ -128,28 +144,31 @@ ngx_stream_lua_coroutine_create_helper(lua_State *L, ngx_stream_session_t *s,
 static int
 ngx_stream_lua_coroutine_resume(lua_State *L)
 {
-    lua_State                     *co;
-    ngx_stream_session_t          *s;
-    ngx_stream_lua_ctx_t          *ctx;
-    ngx_stream_lua_co_ctx_t       *coctx;
-    ngx_stream_lua_co_ctx_t       *p_coctx; /* parent co ctx */
+    lua_State                           *co;
+    ngx_stream_lua_request_t            *r;
+    ngx_stream_lua_ctx_t                *ctx;
+    ngx_stream_lua_co_ctx_t             *coctx;
+    ngx_stream_lua_co_ctx_t             *p_coctx; /* parent co ctx */
 
     co = lua_tothread(L, 1);
 
     luaL_argcheck(L, co, 1, "coroutine expected");
 
-    s = ngx_stream_lua_get_session(L);
-    if (s == NULL) {
-        return luaL_error(L, "no session found");
+    r = ngx_stream_lua_get_req(L);
+    if (r == NULL) {
+        return luaL_error(L, "no request found");
     }
 
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_lua_module);
+    ctx = ngx_stream_lua_get_module_ctx(r, ngx_stream_lua_module);
     if (ctx == NULL) {
-        return luaL_error(L, "no session ctx found");
+        return luaL_error(L, "no request ctx found");
     }
 
     ngx_stream_lua_check_context(L, ctx, NGX_STREAM_LUA_CONTEXT_CONTENT
-                                 | NGX_STREAM_LUA_CONTEXT_TIMER);
+                                 | NGX_STREAM_LUA_CONTEXT_TIMER
+                                 | NGX_STREAM_LUA_CONTEXT_SSL_CERT
+                                 | NGX_STREAM_LUA_CONTEXT_PREREAD
+                                 );
 
     p_coctx = ctx->cur_co_ctx;
     if (p_coctx == NULL) {
@@ -161,10 +180,7 @@ ngx_stream_lua_coroutine_resume(lua_State *L)
         return luaL_error(L, "no co ctx found");
     }
 
-#if 0
-    /* TODO */
-    ngx_stream_lua_probe_user_coroutine_resume(s, L, co);
-#endif
+    ngx_stream_lua_probe_user_coroutine_resume(r, L, co);
 
     if (coctx->co_status != NGX_STREAM_LUA_CO_SUSPENDED) {
         dd("coroutine resume: %d", coctx->co_status);
@@ -194,22 +210,25 @@ ngx_stream_lua_coroutine_resume(lua_State *L)
 static int
 ngx_stream_lua_coroutine_yield(lua_State *L)
 {
-    ngx_stream_session_t          *s;
-    ngx_stream_lua_ctx_t          *ctx;
-    ngx_stream_lua_co_ctx_t       *coctx;
+    ngx_stream_lua_request_t            *r;
+    ngx_stream_lua_ctx_t                *ctx;
+    ngx_stream_lua_co_ctx_t             *coctx;
 
-    s = ngx_stream_lua_get_session(L);
-    if (s == NULL) {
-        return luaL_error(L, "no session found");
+    r = ngx_stream_lua_get_req(L);
+    if (r == NULL) {
+        return luaL_error(L, "no request found");
     }
 
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_lua_module);
+    ctx = ngx_stream_lua_get_module_ctx(r, ngx_stream_lua_module);
     if (ctx == NULL) {
-        return luaL_error(L, "no session ctx found");
+        return luaL_error(L, "no request ctx found");
     }
 
     ngx_stream_lua_check_context(L, ctx, NGX_STREAM_LUA_CONTEXT_CONTENT
-                                 | NGX_STREAM_LUA_CONTEXT_TIMER);
+                                 | NGX_STREAM_LUA_CONTEXT_TIMER
+                                 | NGX_STREAM_LUA_CONTEXT_SSL_CERT
+                                 | NGX_STREAM_LUA_CONTEXT_PREREAD
+                                 );
 
     coctx = ctx->cur_co_ctx;
 
@@ -221,18 +240,11 @@ ngx_stream_lua_coroutine_yield(lua_State *L)
         dd("set coroutine to running");
         coctx->parent_co_ctx->co_status = NGX_STREAM_LUA_CO_RUNNING;
 
-#if 0
-        /* TODO */
-        ngx_stream_lua_probe_user_coroutine_yield(s,
-                                                  coctx->parent_co_ctx->co,
-                                                  L);
-#endif
+        ngx_stream_lua_probe_user_coroutine_yield(r,
+                                                  coctx->parent_co_ctx->co, L);
 
     } else {
-#if 0
-        /* TODO */
-        ngx_stream_lua_probe_user_coroutine_yield(s, NULL, L);
-#endif
+        ngx_stream_lua_probe_user_coroutine_yield(r, NULL, L);
     }
 
     /* yield and pass retvals to main thread,
@@ -289,15 +301,27 @@ ngx_stream_lua_inject_coroutine_api(ngx_log_t *log, lua_State *L)
     {
         const char buf[] =
             "local keys = {'create', 'yield', 'resume', 'status'}\n"
+#ifdef OPENRESTY_LUAJIT
+            "local get_req = require 'thread.exdata'\n"
+#else
             "local getfenv = getfenv\n"
+#endif
             "for _, key in ipairs(keys) do\n"
                "local std = coroutine['_' .. key]\n"
                "local ours = coroutine['__' .. key]\n"
                "local raw_ctx = ngx._phase_ctx\n"
                "coroutine[key] = function (...)\n"
-                    "local s = getfenv(0).__ngx_sess\n"
-                    "if s then\n"
-                        "local ctx = raw_ctx(s)\n"
+#ifdef OPENRESTY_LUAJIT
+                    "local r = get_req()\n"
+#else
+                    "local r = getfenv(0).__ngx_req\n"
+#endif
+                    "if r ~= nil then\n"
+#ifdef OPENRESTY_LUAJIT
+                        "local ctx = raw_ctx()\n"
+#else
+                        "local ctx = raw_ctx(r)\n"
+#endif
                         /* ignore header and body filters */
                         "if ctx ~= 0x020 and ctx ~= 0x040 then\n"
                             "return ours(...)\n"
@@ -343,42 +367,46 @@ ngx_stream_lua_inject_coroutine_api(ngx_log_t *log, lua_State *L)
 static int
 ngx_stream_lua_coroutine_status(lua_State *L)
 {
-    lua_State                       *co;  /* new coroutine to be created */
-    const ngx_str_t                 *names;
-    ngx_stream_session_t            *s;
-    ngx_stream_lua_ctx_t            *ctx;
-    ngx_stream_lua_co_ctx_t         *coctx; /* co ctx for the new coroutine */
+    lua_State                     *co;  /* new coroutine to be created */
+    ngx_stream_lua_request_t      *r;
+    ngx_stream_lua_ctx_t          *ctx;
+    ngx_stream_lua_co_ctx_t       *coctx; /* co ctx for the new coroutine */
 
     co = lua_tothread(L, 1);
 
     luaL_argcheck(L, co, 1, "coroutine expected");
 
-    s = ngx_stream_lua_get_session(L);
-    if (s == NULL) {
-        return luaL_error(L, "no session found");
+    r = ngx_stream_lua_get_req(L);
+    if (r == NULL) {
+        return luaL_error(L, "no request found");
     }
 
-    ctx = ngx_stream_get_module_ctx(s, ngx_stream_lua_module);
+    ctx = ngx_stream_lua_get_module_ctx(r, ngx_stream_lua_module);
     if (ctx == NULL) {
-        return luaL_error(L, "no session ctx found");
+        return luaL_error(L, "no request ctx found");
     }
 
     ngx_stream_lua_check_context(L, ctx, NGX_STREAM_LUA_CONTEXT_CONTENT
-                                 | NGX_STREAM_LUA_CONTEXT_TIMER);
-
-    names = ngx_stream_lua_co_status_names;
+                                 | NGX_STREAM_LUA_CONTEXT_TIMER
+                                 | NGX_STREAM_LUA_CONTEXT_SSL_CERT
+                                 | NGX_STREAM_LUA_CONTEXT_PREREAD
+                                 );
 
     coctx = ngx_stream_lua_get_co_ctx(co, ctx);
     if (coctx == NULL) {
-        lua_pushlstring(L, (const char *) names[NGX_STREAM_LUA_CO_DEAD].data,
-                        names[NGX_STREAM_LUA_CO_DEAD].len);
+        lua_pushlstring(L, (const char *)
+                        ngx_stream_lua_co_status_names[NGX_STREAM_LUA_CO_DEAD]
+                        .data,
+                        ngx_stream_lua_co_status_names[NGX_STREAM_LUA_CO_DEAD]
+                        .len);
         return 1;
     }
 
     dd("co status: %d", coctx->co_status);
 
-    lua_pushlstring(L, (const char *) names[coctx->co_status].data,
-                    names[coctx->co_status].len);
+    lua_pushlstring(L, (const char *)
+                    ngx_stream_lua_co_status_names[coctx->co_status].data,
+                    ngx_stream_lua_co_status_names[coctx->co_status].len);
     return 1;
 }
 

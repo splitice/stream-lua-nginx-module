@@ -499,7 +499,7 @@ hello, world
         ngx.say("abort at ", i)
     }
 --- stream_response_like
-^true nil true\nabort at (?:139|140)$
+^true nil true\nabort at (?:139|140|141)$
 --- no_error_log
 [error]
 
@@ -1917,7 +1917,7 @@ bad "zone" argument
     }
 --- stream_response
 --- error_log
-bad user data for the ngx_shm_zone_t pointer
+bad "zone" argument
 
 
 

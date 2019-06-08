@@ -1,3 +1,11 @@
+
+/*
+ * !!! DO NOT EDIT DIRECTLY !!!
+ * This file was automatically generated from the following template:
+ *
+ * src/subsys/ngx_subsys_lua_string.c.tt2
+ */
+
 /*
  * Copyright (C) Xiaozhe Wang (chaoslawful)
  * Copyright (C) Yichun Zhang (agentzh)
@@ -15,7 +23,7 @@
 #include "ngx_stream_lua_args.h"
 #include "ngx_crc32.h"
 
-#if NGX_HAVE_SHA1
+#if (NGX_HAVE_SHA1)
 #include "ngx_sha1.h"
 #endif
 
@@ -50,6 +58,7 @@ static int ngx_stream_lua_ngx_crc32_short(lua_State *L);
 static int ngx_stream_lua_ngx_crc32_long(lua_State *L);
 static int ngx_stream_lua_ngx_encode_args(lua_State *L);
 static int ngx_stream_lua_ngx_decode_args(lua_State *L);
+
 #if (NGX_OPENSSL)
 static int ngx_stream_lua_ngx_hmac_sha1(lua_State *L);
 #endif
@@ -125,12 +134,13 @@ ngx_stream_lua_ngx_escape_uri(lua_State *L)
         return 1;
     }
 
-    escape = 2 * ngx_stream_lua_escape_uri(NULL, src, len, NGX_ESCAPE_URI);
+    escape = 2 * ngx_stream_lua_escape_uri(NULL, src, len,
+                                           NGX_ESCAPE_URI_COMPONENT);
 
     if (escape) {
         dlen = escape + len;
         dst = lua_newuserdata(L, dlen);
-        ngx_stream_lua_escape_uri(dst, src, len, NGX_ESCAPE_URI);
+        ngx_stream_lua_escape_uri(dst, src, len, NGX_ESCAPE_URI_COMPONENT);
         lua_pushlstring(L, (char *) dst, dlen);
     }
 
@@ -685,7 +695,7 @@ ngx_stream_lua_ffi_md5(const u_char *src, size_t len, u_char *dst)
 int
 ngx_stream_lua_ffi_sha1_bin(const u_char *src, size_t len, u_char *dst)
 {
-#if NGX_HAVE_SHA1
+#if (NGX_HAVE_SHA1)
     ngx_sha1_t               sha;
 
     ngx_sha1_init(&sha);
@@ -751,14 +761,17 @@ size_t
 ngx_stream_lua_ffi_uri_escaped_length(const u_char *src, size_t len)
 {
     return len + 2 * ngx_stream_lua_escape_uri(NULL, (u_char *) src, len,
-                                               NGX_ESCAPE_URI);
+                                               NGX_ESCAPE_URI_COMPONENT);
 }
 
 
 void
 ngx_stream_lua_ffi_escape_uri(const u_char *src, size_t len, u_char *dst)
 {
-    ngx_stream_lua_escape_uri(dst, (u_char *) src, len, NGX_ESCAPE_URI);
+    ngx_stream_lua_escape_uri(dst, (u_char *) src, len,
+                              NGX_ESCAPE_URI_COMPONENT);
 }
 
 #endif
+
+/* vi:set ft=c ts=4 sw=4 et fdm=marker: */

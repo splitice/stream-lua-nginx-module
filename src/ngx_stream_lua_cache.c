@@ -1,5 +1,13 @@
 
 /*
+ * !!! DO NOT EDIT DIRECTLY !!!
+ * This file was automatically generated from the following template:
+ *
+ * src/subsys/ngx_subsys_lua_cache.c.tt2
+ */
+
+
+/*
  * Copyright (C) Xiaozhe Wang (chaoslawful)
  * Copyright (C) Yichun Zhang (agentzh)
  */
@@ -11,9 +19,12 @@
 #include "ddebug.h"
 
 
+#include <nginx.h>
+#include <ngx_md5.h>
+#include "ngx_stream_lua_common.h"
 #include "ngx_stream_lua_cache.h"
-#include "ngx_stream_lua_util.h"
 #include "ngx_stream_lua_clfactory.h"
+#include "ngx_stream_lua_util.h"
 
 
 /**
@@ -32,11 +43,14 @@ static ngx_int_t
 ngx_stream_lua_cache_load_code(ngx_log_t *log, lua_State *L,
     const char *key)
 {
+#ifndef OPENRESTY_LUAJIT
     int          rc;
     u_char      *err;
+#endif
 
     /*  get code cache table */
-    lua_pushlightuserdata(L, &ngx_stream_lua_code_cache_key);
+    lua_pushlightuserdata(L, ngx_stream_lua_lightudata_mask(
+                          code_cache_key));
     lua_rawget(L, LUA_REGISTRYINDEX);    /*  sp++ */
 
     dd("Code cache table to load: %p", lua_topointer(L, -1));
@@ -49,6 +63,10 @@ ngx_stream_lua_cache_load_code(ngx_log_t *log, lua_State *L,
     lua_getfield(L, -1, key);    /*  sp++ */
 
     if (lua_isfunction(L, -1)) {
+#ifdef OPENRESTY_LUAJIT
+        lua_remove(L, -2);   /*  sp-- */
+        return NGX_OK;
+#else
         /*  call closure factory to gen new closure */
         rc = lua_pcall(L, 0, 1, 0);
         if (rc == 0) {
@@ -66,10 +84,11 @@ ngx_stream_lua_cache_load_code(ngx_log_t *log, lua_State *L,
         }
 
         ngx_log_error(NGX_LOG_ERR, log, 0,
-                      "stream lua: failed to run factory at key \"%s\": %s",
+                      "lua: failed to run factory at key \"%s\": %s",
                       key, err);
         lua_pop(L, 2);
         return NGX_ERROR;
+#endif /* OPENRESTY_LUAJIT */
     }
 
     dd("Value associated with given key in code cache table is not code "
@@ -99,10 +118,13 @@ ngx_stream_lua_cache_load_code(ngx_log_t *log, lua_State *L,
 static ngx_int_t
 ngx_stream_lua_cache_store_code(lua_State *L, const char *key)
 {
+#ifndef OPENRESTY_LUAJIT
     int rc;
+#endif
 
     /*  get code cache table */
-    lua_pushlightuserdata(L, &ngx_stream_lua_code_cache_key);
+    lua_pushlightuserdata(L, ngx_stream_lua_lightudata_mask(
+                          code_cache_key));
     lua_rawget(L, LUA_REGISTRYINDEX);
 
     dd("Code cache table to store: %p", lua_topointer(L, -1));
@@ -118,12 +140,14 @@ ngx_stream_lua_cache_store_code(lua_State *L, const char *key)
     /*  remove cache table, leave closure factory at top of stack */
     lua_pop(L, 1); /* closure */
 
+#ifndef OPENRESTY_LUAJIT
     /*  call closure factory to generate new closure */
     rc = lua_pcall(L, 0, 1, 0);
     if (rc != 0) {
         dd("Error: failed to call closure factory!!");
         return NGX_ERROR;
     }
+#endif
 
     return NGX_OK;
 }
@@ -163,7 +187,7 @@ ngx_stream_lua_cache_loadbuffer(ngx_log_t *log, lua_State *L,
     rc = ngx_stream_lua_clfactory_loadbuffer(L, (char *) src, src_len, name);
 
     if (rc != 0) {
-        /*  Oops! error occured when loading Lua script */
+        /*  Oops! error occurred when loading Lua script */
         if (rc == LUA_ERRMEM) {
             err = "memory allocation error";
 
@@ -249,14 +273,14 @@ ngx_stream_lua_cache_loadfile(ngx_log_t *log, lua_State *L,
     dd("loadfile returns %d (%d)", (int) rc, LUA_ERRFILE);
 
     if (rc != 0) {
-        /*  Oops! error occured when loading Lua script */
+        /*  Oops! error occurred when loading Lua script */
         switch (rc) {
         case LUA_ERRMEM:
             err = "memory allocation error";
             break;
 
         case LUA_ERRFILE:
-            errcode = NGX_ERROR;
+            errcode = NGX_STREAM_INTERNAL_SERVER_ERROR;
             /* fall through */
 
         default:
@@ -289,3 +313,5 @@ error:
     lua_settop(L, n);
     return errcode;
 }
+
+/* vi:set ft=c ts=4 sw=4 et fdm=marker: */

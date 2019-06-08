@@ -1,5 +1,13 @@
 
 /*
+ * !!! DO NOT EDIT DIRECTLY !!!
+ * This file was automatically generated from the following template:
+ *
+ * src/subsys/ngx_subsys_lua_worker.c.tt2
+ */
+
+
+/*
  * Copyright (C) Yichun Zhang (agentzh)
  */
 
@@ -11,6 +19,9 @@
 
 
 #include "ngx_stream_lua_worker.h"
+
+
+#define NGX_PROCESS_PRIVILEGED_AGENT    99
 
 
 static int ngx_stream_lua_ngx_worker_exiting(lua_State *L);
@@ -60,6 +71,13 @@ static int
 ngx_stream_lua_ngx_worker_id(lua_State *L)
 {
 #if (nginx_version >= 1009001)
+    if (ngx_process != NGX_PROCESS_WORKER
+        && ngx_process != NGX_PROCESS_SINGLE)
+    {
+        lua_pushnil(L);
+        return 1;
+    }
+
     lua_pushinteger(L, (lua_Integer) ngx_worker);
 #else
     lua_pushnil(L);
@@ -93,6 +111,12 @@ int
 ngx_stream_lua_ffi_worker_id(void)
 {
 #if (nginx_version >= 1009001)
+    if (ngx_process != NGX_PROCESS_WORKER
+        && ngx_process != NGX_PROCESS_SINGLE)
+    {
+        return -1;
+    }
+
     return (int) ngx_worker;
 #else
     return -1;
@@ -116,5 +140,62 @@ ngx_stream_lua_ffi_worker_count(void)
                                            ngx_core_module);
 
     return (int) ccf->worker_processes;
+}
+
+
+int
+ngx_stream_lua_ffi_master_pid(void)
+{
+#if (nginx_version >= 1013008)
+    if (ngx_process == NGX_PROCESS_SINGLE) {
+        return (int) ngx_pid;
+    }
+
+    return (int) ngx_parent;
+#else
+    return NGX_ERROR;
+#endif
+}
+
+
+int
+ngx_stream_lua_ffi_get_process_type(void)
+{
+#if defined(HAVE_PRIVILEGED_PROCESS_PATCH) && !NGX_WIN32
+    if (ngx_process == NGX_PROCESS_HELPER) {
+        if (ngx_is_privileged_agent) {
+            return NGX_PROCESS_PRIVILEGED_AGENT;
+        }
+    }
+#endif
+
+    return ngx_process;
+}
+
+
+int
+ngx_stream_lua_ffi_enable_privileged_agent(char **err)
+{
+#ifdef HAVE_PRIVILEGED_PROCESS_PATCH
+    ngx_core_conf_t   *ccf;
+
+    ccf = (ngx_core_conf_t *) ngx_get_conf(ngx_cycle->conf_ctx,
+                                           ngx_core_module);
+
+    ccf->privileged_agent = 1;
+
+    return NGX_OK;
+
+#else
+    *err = "missing privileged agent process patch in the nginx core";
+    return NGX_ERROR;
+#endif
+}
+
+
+void
+ngx_stream_lua_ffi_process_signal_graceful_exit(void)
+{
+    ngx_quit = 1;
 }
 #endif

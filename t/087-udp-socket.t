@@ -4,7 +4,7 @@ use Test::Nginx::Socket::Lua::Stream;
 
 repeat_each(2);
 
-plan tests => repeat_each() * (3 * blocks() + 12);
+plan tests => repeat_each() * (3 * blocks() + 14);
 
 our $HtmlDir = html_dir;
 
@@ -231,7 +231,7 @@ M(http-lua-info) {
 
 --- stream_response
 --- error_log eval
-qr/content_by_lua_block\(nginx\.conf:\d+\):9: bad session/
+qr/content_by_lua\(nginx\.conf:\d+\):9: bad request/
 
 
 
@@ -281,7 +281,7 @@ function get_udp(port)
 end
 --- stream_response
 --- error_log eval
-qr/content_by_lua_block\(nginx\.conf:\d+\):7: bad session/
+qr/content_by_lua\(nginx\.conf:\d+\):7: bad request/
 
 
 
@@ -519,7 +519,7 @@ lua udp socket receive buffer size: 8192
 
 === TEST 11: access the google DNS server (using domain names)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         -- avoid flushing google in "check leak" testing mode:
         local counter = package.loaded.counter
@@ -640,7 +640,7 @@ probe syscall.socket.return, syscall.connect.return {
 
 === TEST 13: bad request tries to setpeer
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
 
     content_by_lua_block {
@@ -677,7 +677,7 @@ end
 peer set
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad session/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
@@ -686,7 +686,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad session/
 
 === TEST 14: bad request tries to send
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
 
     content_by_lua_block {
@@ -723,7 +723,7 @@ end
 peer set
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad session/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
@@ -732,7 +732,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad session/
 
 === TEST 15: bad request tries to receive
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
 
     content_by_lua_block {
@@ -772,7 +772,7 @@ end
 peer set
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad session/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):13: bad request/
 
 --- no_error_log
 [alert]
@@ -781,7 +781,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad session/
 
 === TEST 16: bad request tries to close
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -818,7 +818,7 @@ end
 peer set
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad session/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):13: bad request/
 
 --- no_error_log
 [alert]
@@ -827,7 +827,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad session/
 
 === TEST 17: bad request tries to receive
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -863,7 +863,55 @@ end
 peer set
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad session/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
+
+
+
+=== TEST 18: the upper bound of port range should be 2^16 - 1
+--- stream_config eval
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
+--- stream_server_config
+    content_by_lua_block {
+        local sock = ngx.socket.udp()
+        local ok, err = sock:setpeername("127.0.0.1", 65536)
+        if not ok then
+            ngx.say("failed to connect: ", err)
+        end
+    }
+--- stream_response
+failed to connect: bad port number: 65536
+--- no_error_log
+[error]
+
+
+
+=== TEST 19: UDP socket GC'ed in preread phase without Lua content phase
+--- stream_server_config
+    preread_by_lua_block {
+        do
+            local udpsock = ngx.socket.udp()
+
+            local res, err = udpsock:setpeername("127.0.0.1", 1234)
+            if not res then
+                ngx.log(ngx.ERR, err)
+            end
+        end
+
+        ngx.timer.at(0, function()
+            collectgarbage()
+            ngx.log(ngx.WARN, "GC cycle done")
+        end)
+    }
+
+    return 1;
+
+--- stream_response chomp
+1
+--- no_error_log
+[error]
+--- error_log
+cleanup lua udp socket upstream request
+GC cycle done

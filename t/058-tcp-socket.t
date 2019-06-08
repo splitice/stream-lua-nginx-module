@@ -4,7 +4,7 @@ use Test::Nginx::Socket::Lua::Stream;
 
 repeat_each(2);
 
-plan tests => repeat_each() * 179;
+plan tests => repeat_each() * 191;
 
 our $HtmlDir = html_dir;
 
@@ -144,7 +144,7 @@ closed
 
 
 
-=== TEST 3: no lua_resolver defined
+=== TEST 3: no resolver defined
 --- stream_server_config
     content_by_lua_block {
         local sock = ngx.socket.tcp()
@@ -167,7 +167,7 @@ closed
         ngx.say("request sent: ", bytes)
     }
 --- stream_response
-failed to connect: no lua_resolver defined to resolve "agentzh.org"
+failed to connect: no resolver defined to resolve "agentzh.org"
 connected: nil
 failed to send request: closed
 --- error_log
@@ -178,8 +178,8 @@ attempt to send data on a closed socket:
 === TEST 4: with resolver
 --- timeout: 10
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
-    lua_resolver_timeout 3s;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 3s;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local port = 80
@@ -219,11 +219,11 @@ attempt to send data on a closed socket:
         end
     }
 
---- stream_response
+--- stream_response_like
 connected: 1
 request sent: 56
-first line received: HTTP/1.1 200 OK
-second line received: Server: openresty
+first line received: HTTP\/1\.1 200 OK
+second line received: (?:Date|Server): .*?
 --- no_error_log
 [error]
 --- timeout: 10
@@ -260,17 +260,17 @@ qr/connect\(\) failed \(\d+: Connection refused\)/
 
 === TEST 6: connection timeout (tcp)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     #lua_socket_connect_timeout 100ms;
     #lua_socket_send_timeout 100ms;
     #lua_socket_read_timeout 100ms;
-    lua_resolver_timeout 3s;
+    resolver_timeout 3s;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
 
         sock:settimeout(100)  -- ms
 
-        local ok, err = sock:connect("agentzh.org", 12345)
+        local ok, err = sock:connect("127.0.0.2", 12345)
         ngx.say("connect: ", ok, " ", err)
 
         local bytes
@@ -290,7 +290,7 @@ send: nil closed
 receive: nil closed
 close: nil closed
 --- error_log
-lua tcp socket connect timed out
+lua tcp socket connect timed out, when connecting to 127.0.0.2:12345
 --- timeout: 10
 
 
@@ -316,8 +316,8 @@ connected: 1
 
 === TEST 8: resolver error (host not found)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
-    lua_resolver_timeout 3s;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 3s;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local port = 80
@@ -352,8 +352,8 @@ attempt to send data on a closed socket
 
 === TEST 9: resolver error (timeout)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
-    lua_resolver_timeout 1ms;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 1ms;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local port = 80
@@ -947,7 +947,7 @@ close: 1 nil
 
 === TEST 19: cannot survive across request boundary (send)
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -997,7 +997,7 @@ received: OK|failed to send request: closed)\$"
 
 === TEST 20: cannot survive across request boundary (receive)
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -1063,7 +1063,7 @@ received: OK|failed to receive a line: closed \[nil\])$/
 
 === TEST 21: cannot survive across request boundary (close)
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -1123,7 +1123,7 @@ received: OK|failed to close: closed)$/
 
 === TEST 22: cannot survive across request boundary (connect)
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -1753,7 +1753,7 @@ close: nil closed
 === TEST 33: reread after a read time out happen (receive -> receive)
 --- stream_server_config
     lua_socket_read_timeout 100ms;
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local ok, err = sock:connect("127.0.0.1", $TEST_NGINX_MEMCACHED_PORT)
@@ -1790,7 +1790,7 @@ lua tcp socket read timed out
 
 === TEST 34: successful reread after a read time out happen (receive -> receive)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local ok, err = sock:connect("127.0.0.1", $TEST_NGINX_SERVER_PORT)
@@ -1863,7 +1863,7 @@ lua tcp socket read timed out
 
 === TEST 35: successful reread after a read time out happen (receive -> receiveuntil)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local ok, err = sock:connect("127.0.0.1", $TEST_NGINX_SERVER_PORT)
@@ -1940,7 +1940,7 @@ lua tcp socket read timed out
 
 === TEST 36: successful reread after a read time out happen (receiveuntil -> receiveuntil)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local ok, err = sock:connect("127.0.0.1", $TEST_NGINX_SERVER_PORT)
@@ -2019,7 +2019,7 @@ lua tcp socket read timed out
 
 === TEST 37: successful reread after a read time out happen (receiveuntil -> receive)
 --- stream_server_config
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
     content_by_lua_block {
         local sock = ngx.socket.tcp()
         local ok, err = sock:connect("127.0.0.1", $TEST_NGINX_SERVER_PORT)
@@ -2247,7 +2247,7 @@ lua clean up the timer for pending ngx.sleep
 
 === TEST 41: bad request tries to connect
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2289,7 +2289,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):14: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):14: bad request/
 
 --- no_error_log
 [alert]
@@ -2298,7 +2298,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):14: bad request/
 
 === TEST 42: bad request tries to receive
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2335,7 +2335,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):13: bad request/
 
 --- no_error_log
 [alert]
@@ -2344,7 +2344,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):13: bad request/
 
 === TEST 43: bad request tries to send
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2380,7 +2380,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
@@ -2389,7 +2389,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
 
 === TEST 44: bad request tries to close
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2425,7 +2425,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
@@ -2434,7 +2434,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
 
 === TEST 45: bad request tries to set keepalive
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2470,7 +2470,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):12: bad request/
 
 --- no_error_log
 [alert]
@@ -2479,7 +2479,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):12: bad request/
 
 === TEST 46: bad request tries to receiveuntil
 --- stream_config eval
-    "lua_package_path '$::HtmlDir/?.lua;./?.lua';"
+    "lua_package_path '$::HtmlDir/?.lua;./?.lua;;';"
 --- stream_server_config
     content_by_lua_block {
         local test = require "test"
@@ -2518,7 +2518,7 @@ end
 connected
 
 --- error_log eval
-qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):14: bad request/
+qr/runtime error: content_by_lua\(nginx\.conf:\d+\):14: bad request/
 
 --- no_error_log
 [alert]
@@ -2528,7 +2528,7 @@ qr/runtime error: content_by_lua_block\(nginx\.conf:\d+\):14: bad request/
 === TEST 47: cosocket resolving aborted by coroutine yielding failures (require)
 --- stream_config
     lua_package_path "$prefix/html/?.lua;;";
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
 
 --- stream_server_config
     content_by_lua_block {
@@ -2557,7 +2557,7 @@ runtime error: attempt to yield across C-call boundary
 === TEST 48: cosocket resolving aborted by coroutine yielding failures (xpcall err)
 --- stream_config
     lua_package_path "$prefix/html/?.lua;;";
-    lua_resolver $TEST_NGINX_RESOLVER;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
 
 --- stream_server_config
     content_by_lua_block {
@@ -2790,15 +2790,15 @@ close: 1 nil
 === TEST 52: kill a thread with a connecting socket
 --- stream_server_config
     lua_socket_connect_timeout 1s;
-    lua_resolver $TEST_NGINX_RESOLVER;
-    lua_resolver_timeout 3s;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 3s;
 
     content_by_lua_block {
         local sock
 
         local thr = ngx.thread.spawn(function ()
             sock = ngx.socket.tcp()
-            local ok, err = sock:connect("agentzh.org", 12345)
+            local ok, err = sock:connect("127.0.0.2", 12345)
             if not ok then
                 ngx.say("failed to connect: ", err)
                 return
@@ -2882,7 +2882,7 @@ request sent: 57
 failed to receive a line: closed []
 close: 1 nil
 --- error_log
-stream lua stream cleanup reuse
+lua stream cleanup reuse
 
 
 
@@ -2959,7 +2959,7 @@ stream lua stream cleanup reuse
 --- stream_response
 total_send_bytes: 114
 --- error_log
-stream lua stream cleanup reuse
+lua stream cleanup reuse
 
 
 
@@ -3035,3 +3035,92 @@ stream lua stream cleanup reuse
 total_send_bytes: 114
 --- no_error_log
 [error]
+
+
+
+=== TEST 56: setkeepalive on socket already shutdown
+--- stream_server_config
+    lua_socket_connect_timeout 1s;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 3s;
+
+    content_by_lua_block {
+        local sock = ngx.socket.tcp()
+        local ok, err = sock:connect("openresty.org", 443)
+        if not ok then
+            ngx.say("failed to connect: ", err)
+            return
+        end
+
+        ngx.say("connected: ", ok)
+
+        local ok, err = sock:shutdown('send')
+        if not ok then
+            ngx.log(ngx.ERR, 'failed to shutdown socket: ', err)
+            return
+        end
+
+        local ok, err = sock:setkeepalive()
+        if not ok then
+            ngx.log(ngx.ERR, "failed to setkeepalive: ", err)
+        end
+    }
+
+--- stream_response
+connected: 1
+--- error_log
+stream lua shutdown socket write direction
+failed to setkeepalive: closed
+
+
+
+=== TEST 57: TEST 62: the upper bound of port range should be 2^16 - 1
+--- stream_server_config
+    content_by_lua_block {
+        local sock, err = ngx.socket.connect("127.0.0.1", 65536)
+        if not sock then
+            ngx.say("failed to connect: ", err)
+        end
+    }
+
+--- stream_response
+failed to connect: bad port number: 65536
+--- no_error_log
+[error]
+
+
+
+=== TEST 58: TCP socket GC'ed in preread phase without Lua content phase
+--- stream_server_config
+    lua_socket_connect_timeout 1s;
+    resolver $TEST_NGINX_RESOLVER ipv6=off;
+    resolver_timeout 3s;
+
+    preread_by_lua_block {
+        do
+            local sock = ngx.socket.tcp()
+            local ok, err = sock:connect("openresty.org", 443)
+            if not ok then
+                ngx.say("failed to connect: ", err)
+                return
+            end
+
+            ngx.say("connected: ", ok)
+        end
+
+        ngx.timer.at(0, function()
+            collectgarbage()
+            ngx.log(ngx.WARN, "GC cycle done")
+        end)
+    }
+
+    return 1;
+
+--- stream_response chomp
+connected: 1
+1
+--- no_error_log
+[error]
+--- error_log
+cleanup lua tcp socket request
+GC cycle done
